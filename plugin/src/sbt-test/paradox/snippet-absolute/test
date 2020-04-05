@@ -1,3 +1,0 @@
-> paradox
-
-$ must-mirror docs/target/paradox/site/main/absolute.html docs/expected/absolute.html

@@ -14,13 +14,11 @@
  * limitations under the License.
  */
 
-import scala.collection.JavaConverters._
-import java.lang.management.ManagementFactory
 
 inThisBuild(List(
   organization := "com.lightbend.paradox",
   licenses += "Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0.html"),
-  scalaVersion := "2.12.8",
+  scalaVersion := "2.13.1",
   organizationName := "lightbend",
   organizationHomepage := Some(url("https://lightbend.com/")),
   homepage := Some(url("https://developer.lightbend.com/docs/paradox/current/")),
@@ -30,12 +28,11 @@ inThisBuild(List(
     Developer("eed3si9n", "Eugene Yokota", "@eed3si9n", url("https://github.com/eed3si9n"))
   ),
   description := "Paradox is a markdown documentation tool for software projects.",
-  dynverSonatypeSnapshots := false // not publishing snapshots, so no SNAPSHOT at the end please
 ))
 
 lazy val paradox = project
   .in(file("."))
-  .aggregate(core, testkit, tests, plugin, themePlugin, themes, docs)
+  .aggregate(core, testkit, tests, themes, docs)
   .settings(
     publish / skip := true
   )
@@ -44,10 +41,11 @@ lazy val core = project
   .in(file("core"))
   .settings(
     name := "paradox",
-    libraryDependencies ++= Library.pegdown,
     libraryDependencies ++= Seq(
-      Library.st4
-    ),
+                           "org.pegdown"     % "pegdown"        % "1.6.0",
+                           "org.parboiled"   % "parboiled-java" % "1.3.0", // overwrite for JDK10 support
+      "org.antlr"         % "ST4"        % "4.1"
+                         ),
     parallelExecution in Test := false
   )
 
@@ -57,7 +55,7 @@ lazy val testkit = project
   .settings(
     name := "testkit",
     libraryDependencies ++= Seq(
-      Library.jtidy
+      "net.sf.jtidy"      % "jtidy"      % "r938"
     )
   )
 
@@ -67,71 +65,19 @@ lazy val tests = project
   .settings(
     name := "tests",
     libraryDependencies ++= Seq(
-      Library.scalatest % "test"
+      "org.scalatest"    %% "scalatest"  % "3.1.1"
     ),
     publish / skip := true
-  )
-
-lazy val plugin = project
-  .in(file("plugin"))
-  .dependsOn(core)
-  .enablePlugins(SbtPlugin)
-  .settings(
-    name := "sbt-paradox",
-    sbtPlugin := true,
-    addSbtPlugin(Library.sbtWeb),
-    scriptedLaunchOpts += ("-Dproject.version=" + version.value),
-    scriptedLaunchOpts ++= ManagementFactory.getRuntimeMXBean.getInputArguments.asScala.filter(
-      a => Seq("-Xmx", "-Xms", "-XX", "-Dfile").exists(a.startsWith)
-    ),
-    scriptedDependencies := {
-      val p1 = (publishLocal in core).value
-      val p2 = publishLocal.value
-      val p3 = (publishLocal in genericTheme).value
-    },
-    resourceGenerators in Compile += Def.task {
-      val file = (resourceManaged in Compile).value / "paradox.properties"
-      IO.write(file,
-        s"""|paradox.organization=${organization.value}
-            |paradox.version=${version.value}
-            |""".stripMargin)
-      Seq(file)
-    }.taskValue
-  )
-
-lazy val themePlugin = (project in file("theme-plugin"))
-  .settings(
-    name := "sbt-paradox-theme",
-    sbtPlugin := true,
-    addSbtPlugin(Library.sbtWeb)
   )
 
 lazy val themes = (project in file("themes"))
-  .aggregate(genericTheme)
   .settings(
     publish / skip := true
   )
 
-lazy val genericTheme = (project in (file("themes") / "generic"))
-  .enablePlugins(ParadoxThemePlugin)
-  .settings(
-    name := "paradox-theme-generic",
-    libraryDependencies ++= Seq(
-      Library.foundation % "provided",
-      Library.prettify % "provided"
-    ),
-  )
-
 lazy val docs = (project in file("docs"))
-  .enablePlugins(ParadoxPlugin)
   .settings(
     name := "paradox docs",
-    paradoxTheme := Some(builtinParadoxTheme("generic")),
-    paradoxProperties in Compile ++= Map(
-      "empty" -> "",
-      "version" -> version.value
-    ),
-    paradoxGroups := Map("Language" -> Seq("Scala", "Java")),
     publish / skip := true
   )
 

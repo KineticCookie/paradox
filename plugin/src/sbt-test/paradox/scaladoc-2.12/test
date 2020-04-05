@@ -1,3 +1,0 @@
-> paradox
-
-$ must-mirror target/paradox/site/main/scaladoc-2.12.html expected/scaladoc-2.12.html

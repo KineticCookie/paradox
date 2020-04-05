@@ -1,1 +1,0 @@
-@@snip[Hello](code-samples/Hello.scala)
