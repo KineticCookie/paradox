@@ -17,19 +17,19 @@
 package com.lightbend.paradox.markdown
 
 import com.lightbend.paradox.tree.Tree.Location
-import java.io.{ File, FileNotFoundException }
+import java.io.{File, FileNotFoundException}
 import java.util.Optional
 
 import org.pegdown.ast._
 import org.pegdown.ast.DirectiveNode.Format._
 import org.pegdown.plugins.ToHtmlSerializerPlugin
-import org.pegdown.{ Printer, ToHtmlSerializer }
+import org.pegdown.{Printer, ToHtmlSerializer}
 
 import scala.collection.JavaConverters._
 
 /**
- * Serialize directives, checking the name and format against registered directives.
- */
+  * Serialize directives, checking the name and format against registered directives.
+  */
 class DirectiveSerializer(directives: Seq[Directive]) extends ToHtmlSerializerPlugin {
   val directiveMap = directives.flatMap(d => d.names.map(n => (n, d))).toMap
 
@@ -48,8 +48,8 @@ class DirectiveSerializer(directives: Seq[Directive]) extends ToHtmlSerializerPl
 // Directive plugins
 
 /**
- * Base directive class, for directive specific serialization.
- */
+  * Base directive class, for directive specific serialization.
+  */
 abstract class Directive {
   def names: Seq[String]
 
@@ -59,45 +59,57 @@ abstract class Directive {
 }
 
 /**
- * Inline directive.
- */
+  * Inline directive.
+  */
 abstract class InlineDirective(val names: String*) extends Directive {
   val format = Set(Inline)
 }
 
 /**
- * Leaf block directive.
- */
+  * Leaf block directive.
+  */
 abstract class LeafBlockDirective(val names: String*) extends Directive {
   val format = Set(LeafBlock)
 }
 
 /**
- * Container block directive.
- */
+  * Container block directive.
+  */
 abstract class ContainerBlockDirective(val names: String*) extends Directive {
   val format = Set(ContainerBlock)
 }
 
 /**
- * Directives with defined "source" semantics.
- */
+  * Directives with defined "source" semantics.
+  */
 trait SourceDirective { this: Directive =>
   def page: Page
   def variables: Map[String, String]
 
   protected def resolvedSource(node: DirectiveNode, page: Page): String = {
     def ref(key: String) =
-      referenceMap.get(key.filterNot(_.isWhitespace).toLowerCase).map(_.getUrl).getOrElse(
-        throw new RefDirective.LinkException(s"Undefined reference key [$key] in [${page.path}]"))
-    Writer.substituteVarsInString(node.source match {
-      case x: DirectiveNode.Source.Direct => x.value
-      case x: DirectiveNode.Source.Ref    => ref(x.value)
-      case DirectiveNode.Source.Empty     => ref(node.label)
-    }, variables)
+      referenceMap
+        .get(key.filterNot(_.isWhitespace).toLowerCase)
+        .map(_.getUrl)
+        .getOrElse(
+          throw new RefDirective.LinkException(s"Undefined reference key [$key] in [${page.path}]")
+        )
+    Writer.substituteVarsInString(
+      node.source match {
+        case x: DirectiveNode.Source.Direct => x.value
+        case x: DirectiveNode.Source.Ref    => ref(x.value)
+        case DirectiveNode.Source.Empty     => ref(node.label)
+      },
+      variables
+    )
   }
 
-  protected def resolveFile(propPrefix: String, source: String, page: Page, variables: Map[String, String]): File =
+  protected def resolveFile(
+      propPrefix: String,
+      source: String,
+      page: Page,
+      variables: Map[String, String]
+  ): File =
     SourceDirective.resolveFile(propPrefix, source, page.file, variables)
 
   private lazy val referenceMap: Map[String, ReferenceNode] = {
@@ -113,12 +125,18 @@ trait SourceDirective { this: Directive =>
 }
 
 object SourceDirective {
-  def resolveFile(propPrefix: String, source: String, pageFile: File, variables: Map[String, String]): File =
+  def resolveFile(
+      propPrefix: String,
+      source: String,
+      pageFile: File,
+      variables: Map[String, String]
+  ): File =
     source match {
       case s if s startsWith "$" =>
         val baseKey = s.drop(1).takeWhile(_ != '$')
-        val base = new File(PropertyUrl(s"$propPrefix.$baseKey.base_dir", variables.get).base.trim)
-        val effectiveBase = if (base.isAbsolute) base else new File(pageFile.getParentFile, base.toString)
+        val base    = new File(PropertyUrl(s"$propPrefix.$baseKey.base_dir", variables.get).base.trim)
+        val effectiveBase =
+          if (base.isAbsolute) base else new File(pageFile.getParentFile, base.toString)
         new File(effectiveBase, s.drop(baseKey.length + 2))
       case s if s startsWith "/" =>
         val base = new File(PropertyUrl(SnipDirective.buildBaseDir, variables.get).base.trim)
@@ -131,16 +149,22 @@ object SourceDirective {
 // Default directives
 
 /**
- * Ref directive.
- *
- * Refs are for links to internal pages. The file extension is replaced when rendering.
- * Links are validated to ensure they point to a known page.
- */
-case class RefDirective(page: Page, pathExists: String => Boolean, convertPath: String => String, variables: Map[String, String])
-  extends InlineDirective("ref", "ref:") with SourceDirective {
+  * Ref directive.
+  *
+  * Refs are for links to internal pages. The file extension is replaced when rendering.
+  * Links are validated to ensure they point to a known page.
+  */
+case class RefDirective(
+    page: Page,
+    pathExists: String => Boolean,
+    convertPath: String => String,
+    variables: Map[String, String]
+) extends InlineDirective("ref", "ref:")
+    with SourceDirective {
 
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit =
-    new ExpLinkNode("", check(convertPath(resolvedSource(node, page))), node.contentsNode).accept(visitor)
+    new ExpLinkNode("", check(convertPath(resolvedSource(node, page))), node.contentsNode)
+      .accept(visitor)
 
   private def check(path: String): String = {
     if (!pathExists(Path.resolve(page.path, path)))
@@ -152,17 +176,18 @@ case class RefDirective(page: Page, pathExists: String => Boolean, convertPath: 
 object RefDirective {
 
   /**
-   * Exception thrown for unknown pages in reference links.
-   */
+    * Exception thrown for unknown pages in reference links.
+    */
   class LinkException(message: String) extends RuntimeException(message)
 
 }
 
 /**
- * Link to external sites using URI templates.
- */
+  * Link to external sites using URI templates.
+  */
 abstract class ExternalLinkDirective(names: String*)
-  extends InlineDirective(names: _*) with SourceDirective {
+    extends InlineDirective(names: _*)
+    with SourceDirective {
 
   import ExternalLinkDirective._
 
@@ -178,11 +203,17 @@ abstract class ExternalLinkDirective(names: String*)
       if (resolvedLink startsWith (".../")) page.base + resolvedLink.drop(4) else resolvedLink
     } catch {
       case Url.Error(reason) =>
-        throw new LinkException(s"Failed to resolve [$link] referenced from [${page.path}] because $reason")
+        throw new LinkException(
+          s"Failed to resolve [$link] referenced from [${page.path}] because $reason"
+        )
       case e: FileNotFoundException =>
-        throw new LinkException(s"Failed to resolve [$link] referenced from [${page.path}] to a file: ${e.getMessage}")
+        throw new LinkException(
+          s"Failed to resolve [$link] referenced from [${page.path}] to a file: ${e.getMessage}"
+        )
       case e: Snippet.SnippetException =>
-        throw new LinkException(s"Failed to resolve [$link] referenced from [${page.path}]: ${e.getMessage}")
+        throw new LinkException(
+          s"Failed to resolve [$link] referenced from [${page.path}]: ${e.getMessage}"
+        )
     }
   }
 }
@@ -190,43 +221,44 @@ abstract class ExternalLinkDirective(names: String*)
 object ExternalLinkDirective {
 
   /**
-   * Exception thrown for unknown or invalid links.
-   */
+    * Exception thrown for unknown or invalid links.
+    */
   class LinkException(reason: String) extends RuntimeException(reason)
 
 }
 
 /**
- * ExtRef directive.
- *
- * Link to external pages using URL templates.
- */
+  * ExtRef directive.
+  *
+  * Link to external pages using URL templates.
+  */
 case class ExtRefDirective(page: Page, variables: Map[String, String])
-  extends ExternalLinkDirective("extref", "extref:") {
+    extends ExternalLinkDirective("extref", "extref:") {
 
   def resolveLink(node: DirectiveNode, link: String): Url = {
     link.split(":", 2) match {
-      case Array(scheme, expr) => PropertyUrl(s"extref.$scheme.base_url", variables.get).format(expr)
-      case _                   => throw Url.Error("URL has no scheme")
+      case Array(scheme, expr) =>
+        PropertyUrl(s"extref.$scheme.base_url", variables.get).format(expr)
+      case _ => throw Url.Error("URL has no scheme")
     }
   }
 
 }
 
 /**
- * API doc directive.
- *
- * Link to javadoc and scaladoc based on package prefix. Will match the
- * configured base URL with the longest package prefix. For example,
- * given:
- *
- * - `scaladoc.akka.base_url=http://doc.akka.io/api/akka/x.y.z`
- * - `scaladoc.akka.http.base_url=http://doc.akka.io/api/akka-http/x.y.z`
- *
- * Then `@scaladoc[Http](akka.http.scaladsl.Http)` will match the latter.
- */
+  * API doc directive.
+  *
+  * Link to javadoc and scaladoc based on package prefix. Will match the
+  * configured base URL with the longest package prefix. For example,
+  * given:
+  *
+  * - `scaladoc.akka.base_url=http://doc.akka.io/api/akka/x.y.z`
+  * - `scaladoc.akka.http.base_url=http://doc.akka.io/api/akka-http/x.y.z`
+  *
+  * Then `@scaladoc[Http](akka.http.scaladsl.Http)` will match the latter.
+  */
 abstract class ApiDocDirective(name: String, page: Page, variables: Map[String, String])
-  extends ExternalLinkDirective(name, name + ":") {
+    extends ExternalLinkDirective(name, name + ":") {
 
   def resolveApiLink(base: Url, link: String): Url
 
@@ -237,21 +269,22 @@ abstract class ApiDocDirective(name: String, page: Page, variables: Map[String, 
   }
 
   def resolveLink(node: DirectiveNode, link: String): Url = {
-    val levels = link.split("[.]")
-    val packages = (1 to levels.init.size).map(levels.take(_).mkString("."))
-    val baseUrl = packages.reverse.collectFirst(baseUrls).getOrElse(defaultBaseUrl).resolve()
+    val levels       = link.split("[.]")
+    val packages     = (1 to levels.init.size).map(levels.take(_).mkString("."))
+    val baseUrl      = packages.reverse.collectFirst(baseUrls).getOrElse(defaultBaseUrl).resolve()
     val resolvedLink = resolveApiLink(baseUrl, link)
     val resolvedPath = resolvedLink.base.getPath
-    if (resolvedPath startsWith ".../") resolvedLink.copy(path = page.base + resolvedPath.drop(4)) else resolvedLink
+    if (resolvedPath startsWith ".../") resolvedLink.copy(path = page.base + resolvedPath.drop(4))
+    else resolvedLink
   }
 
 }
 
 case class ScaladocDirective(page: Page, variables: Map[String, String])
-  extends ApiDocDirective("scaladoc", page, variables) {
+    extends ApiDocDirective("scaladoc", page, variables) {
 
   def resolveApiLink(baseUrl: Url, link: String): Url = {
-    val url = Url(link).base
+    val url  = Url(link).base
     val path = url.getPath.replace('.', '/') + ".html"
     (baseUrl / path) withFragment (url.getFragment)
   }
@@ -259,10 +292,10 @@ case class ScaladocDirective(page: Page, variables: Map[String, String])
 }
 
 case class JavadocDirective(page: Page, variables: Map[String, String])
-  extends ApiDocDirective("javadoc", page, variables) {
+    extends ApiDocDirective("javadoc", page, variables) {
 
   def resolveApiLink(baseUrl: Url, link: String): Url = {
-    val url = Url(link).base
+    val url  = Url(link).base
     val path = url.getPath.replace('.', '/') + ".html"
     baseUrl.withEndingSlash.withQuery(path).withFragment(url.getFragment)
   }
@@ -279,14 +312,14 @@ trait GitHubResolver {
 
   val IssuesLink = """([^/]+/[^/]+)?#([0-9]+)""".r
   val CommitLink = """(([^/]+/[^/]+)?@)?(\p{XDigit}{5,40})""".r
-  val TreeUrl = """(.*github.com/[^/]+/[^/]+/tree/[^/]+)""".r
+  val TreeUrl    = """(.*github.com/[^/]+/[^/]+/tree/[^/]+)""".r
   val ProjectUrl = """(.*github.com/[^/]+/[^/]+).*""".r
 
   val baseUrl = PropertyUrl(GitHubResolver.baseUrl, variables.get)
 
   protected def resolvePath(page: Page, source: String, labelOpt: Option[String]): Url = {
     val pathUrl = Url.parse(source, "path is invalid")
-    val path = pathUrl.base.getPath
+    val path    = pathUrl.base.getPath
     val root = variables.get("github.root.base_dir") match {
       case None      => throw Url.Error("[github.root.base_dir] is not defined")
       case Some(dir) => new File(dir)
@@ -298,7 +331,7 @@ trait GitHubResolver {
     }
     val labelFragment =
       for {
-        label <- labelOpt
+        label      <- labelOpt
         (min, max) <- Snippet.extractLabelRange(file, label)
       } yield {
         if (min == max)
@@ -333,14 +366,15 @@ trait GitHubResolver {
 }
 
 /**
- * GitHub directive.
- *
- * Link to GitHub project entities like issues, commits and source code.
- * Supports most of the references documented in:
- * https://help.github.com/articles/autolinked-references-and-urls/
- */
+  * GitHub directive.
+  *
+  * Link to GitHub project entities like issues, commits and source code.
+  * Supports most of the references documented in:
+  * https://help.github.com/articles/autolinked-references-and-urls/
+  */
 case class GitHubDirective(page: Page, variables: Map[String, String])
-  extends ExternalLinkDirective("github", "github:") with GitHubResolver {
+    extends ExternalLinkDirective("github", "github:")
+    with GitHubResolver {
 
   def resolveLink(node: DirectiveNode, link: String): Url = {
     link match {
@@ -353,29 +387,38 @@ case class GitHubDirective(page: Page, variables: Map[String, String])
 }
 
 /**
- * Snip directive.
- *
- * Extracts snippets from source files into verbatim blocks.
- */
+  * Snip directive.
+  *
+  * Extracts snippets from source files into verbatim blocks.
+  */
 case class SnipDirective(page: Page, variables: Map[String, String])
-  extends LeafBlockDirective("snip") with SourceDirective with GitHubResolver {
+    extends LeafBlockDirective("snip")
+    with SourceDirective
+    with GitHubResolver {
 
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
     try {
-      val labels = node.attributes.values("identifier").asScala
+      val labels = node.attributes.values("identifier").asScala.toList
       val source = resolvedSource(node, page)
-      val filterLabels = node.attributes.booleanValue("filterLabels", variables.get("snip.filterLabels").forall(_ == "true"))
-      val file = resolveFile("snip", source, page, variables)
+      val filterLabels = node.attributes
+        .booleanValue("filterLabels", variables.get("snip.filterLabels").forall(_ == "true"))
+      val file                = resolveFile("snip", source, page, variables)
       val (text, snippetLang) = Snippet(file, labels, filterLabels)
-      val lang = Option(node.attributes.value("type")).getOrElse(snippetLang)
-      val group = Option(node.attributes.value("group")).getOrElse("")
-      val sourceUrl = if (variables.contains(GitHubResolver.baseUrl) && variables.getOrElse(SnipDirective.showGithubLinks, "false") == "true") {
-        Optional.of(resolvePath(page, Path.toUnixStyleRootPath(file.getAbsolutePath), labels.headOption).base.normalize.toString)
-      } else Optional.empty[String]()
+      val lang                = Option(node.attributes.value("type")).getOrElse(snippetLang)
+      val group               = Option(node.attributes.value("group")).getOrElse("")
+      val sourceUrl =
+        if (variables.contains(GitHubResolver.baseUrl) && variables
+              .getOrElse(SnipDirective.showGithubLinks, "false") == "true") {
+          Optional.of(
+            resolvePath(page, Path.toUnixStyleRootPath(file.getAbsolutePath), labels.headOption).base.normalize.toString
+          )
+        } else Optional.empty[String]()
       new VerbatimGroupNode(text, lang, group, node.attributes.classes, sourceUrl).accept(visitor)
     } catch {
       case e: FileNotFoundException =>
-        throw new SnipDirective.LinkException(s"Unknown snippet [${e.getMessage}] referenced from [${page.path}]")
+        throw new SnipDirective.LinkException(
+          s"Unknown snippet [${e.getMessage}] referenced from [${page.path}]"
+        )
     }
   }
 
@@ -384,26 +427,27 @@ case class SnipDirective(page: Page, variables: Map[String, String])
 object SnipDirective {
 
   val showGithubLinks = "snip.github_link"
-  val buildBaseDir = "snip.build.base_dir"
+  val buildBaseDir    = "snip.build.base_dir"
 
   /**
-   * Exception thrown for unknown snip links.
-   */
+    * Exception thrown for unknown snip links.
+    */
   class LinkException(message: String) extends RuntimeException(message)
 
 }
 
 /**
- * Fiddle directive.
- *
- * Extracts fiddles from source files into fiddle blocks.
- */
+  * Fiddle directive.
+  *
+  * Extracts fiddles from source files into fiddle blocks.
+  */
 case class FiddleDirective(page: Page, variables: Map[String, String])
-  extends LeafBlockDirective("fiddle") with SourceDirective {
+    extends LeafBlockDirective("fiddle")
+    with SourceDirective {
 
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
     try {
-      val labels = node.attributes.values("identifier").asScala
+      val labels = node.attributes.values("identifier").asScala.toList
 
       val integrationScriptUrl =
         node.attributes.value("integrationScriptUrl", "https://embed.scalafiddle.io/integration.js")
@@ -411,18 +455,26 @@ case class FiddleDirective(page: Page, variables: Map[String, String])
       // integration params as listed here:
       // https://github.com/scalafiddle/scalafiddle-core/tree/master/integrations#scalafiddle-integration
       // 'selector' is excluded on purpose to not complicate logic and increase maintainability
-      val validParams = Seq("prefix", "dependency", "scalaversion", "template", "theme", "minheight", "layout")
+      val validParams =
+        Seq("prefix", "dependency", "scalaversion", "template", "theme", "minheight", "layout")
 
-      val params = validParams.map(k => Option(node.attributes.value(k)).map { x =>
-        if (x.startsWith("'") && x.endsWith("'")) // earlier explicit ' was required to quote attributes (now all are quoted with ")
-          s"""data-$k="${x.substring(1, x.length - 1)}" """
-        else
-          s"""data-$k="$x" """
-      }.getOrElse("")).mkString(" ")
+      val params = validParams
+        .map(k =>
+          Option(node.attributes.value(k))
+            .map { x =>
+              if (x.startsWith("'") && x.endsWith("'")) // earlier explicit ' was required to quote attributes (now all are quoted with ")
+                s"""data-$k="${x.substring(1, x.length - 1)}" """
+              else
+                s"""data-$k="$x" """
+            }
+            .getOrElse("")
+        )
+        .mkString(" ")
 
       val source = resolvedSource(node, page)
-      val file = resolveFile("fiddle", source, page, variables)
-      val filterLabels = node.attributes.booleanValue("filterLabels", variables.get("fiddle.filterLabels").forall(_ == "true"))
+      val file   = resolveFile("fiddle", source, page, variables)
+      val filterLabels = node.attributes
+        .booleanValue("filterLabels", variables.get("fiddle.filterLabels").forall(_ == "true"))
       val (code, _) = Snippet(file, labels, filterLabels)
 
       printer.println.print(s"""
@@ -430,11 +482,12 @@ case class FiddleDirective(page: Page, variables: Map[String, String])
           <pre class="prettyprint"><code class="language-scala">$code</code></pre>
         </div>
         <script defer="true" src="$integrationScriptUrl"></script>
-        """
-      )
+        """)
     } catch {
       case e: FileNotFoundException =>
-        throw new FiddleDirective.LinkException(s"Unknown fiddle [${e.getMessage}] referenced from [${page.path}]")
+        throw new FiddleDirective.LinkException(
+          s"Unknown fiddle [${e.getMessage}] referenced from [${page.path}]"
+        )
     }
   }
 }
@@ -442,26 +495,27 @@ case class FiddleDirective(page: Page, variables: Map[String, String])
 object FiddleDirective {
 
   /**
-   * Exception thrown for unknown snip links.
-   */
+    * Exception thrown for unknown snip links.
+    */
   class LinkException(message: String) extends RuntimeException(message)
 
 }
 
 /**
- * Table of contents directive.
- *
- * Placeholder to insert a serialized table of contents, using the page and header trees.
- * Depth and whether to include pages or headers can be specified in directive attributes.
- */
-case class TocDirective(location: Location[Page], includeIndexes: List[Int]) extends LeafBlockDirective("toc") {
+  * Table of contents directive.
+  *
+  * Placeholder to insert a serialized table of contents, using the page and header trees.
+  * Depth and whether to include pages or headers can be specified in directive attributes.
+  */
+case class TocDirective(location: Location[Page], includeIndexes: List[Int])
+    extends LeafBlockDirective("toc") {
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
     val classes = node.attributes.classesString
-    val depth = node.attributes.intValue("depth", 6)
-    val pages = node.attributes.booleanValue("pages", true)
+    val depth   = node.attributes.intValue("depth", 6)
+    val pages   = node.attributes.booleanValue("pages", true)
     val headers = node.attributes.booleanValue("headers", true)
     val ordered = node.attributes.booleanValue("ordered", false)
-    val toc = new TableOfContents(pages, headers, ordered, depth)
+    val toc     = new TableOfContents(pages, headers, ordered, depth)
     printer.println.print(s"""<div class="toc $classes">""")
     toc.markdown(location, node.getStartIndex, includeIndexes).accept(visitor)
     printer.println.print("</div>")
@@ -469,10 +523,10 @@ case class TocDirective(location: Location[Page], includeIndexes: List[Int]) ext
 }
 
 /**
- * Var directive.
- *
- * Looks up property values and renders escaped text.
- */
+  * Var directive.
+  *
+  * Looks up property values and renders escaped text.
+  */
 case class VarDirective(variables: Map[String, String]) extends InlineDirective("var", "var:") {
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
     new SpecialTextNode(variables.get(node.label).getOrElse(s"<${node.label}>")).accept(visitor)
@@ -480,17 +534,17 @@ case class VarDirective(variables: Map[String, String]) extends InlineDirective(
 }
 
 /**
- * Vars directive.
- *
- * Replaces property values in verbatim blocks.
- */
+  * Vars directive.
+  *
+  * Replaces property values in verbatim blocks.
+  */
 case class VarsDirective(variables: Map[String, String]) extends ContainerBlockDirective("vars") {
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
     import scala.collection.JavaConverters._
     node.contentsNode.getChildren.asScala.headOption match {
       case Some(verbatim: VerbatimNode) =>
         val startDelimiter = node.attributes.value("start-delimiter", "$")
-        val stopDelimiter = node.attributes.value("stop-delimiter", "$")
+        val stopDelimiter  = node.attributes.value("stop-delimiter", "$")
         val text = variables.foldLeft(verbatim.getText) {
           case (str, (key, value)) =>
             str.replace(startDelimiter + key + stopDelimiter, value)
@@ -502,14 +556,15 @@ case class VarsDirective(variables: Map[String, String]) extends ContainerBlockD
 }
 
 /**
- * Callout directive.
- *
- * Renders call-out divs.
- */
-case class CalloutDirective(name: String, defaultTitle: String) extends ContainerBlockDirective(Array(name): _*) {
+  * Callout directive.
+  *
+  * Renders call-out divs.
+  */
+case class CalloutDirective(name: String, defaultTitle: String)
+    extends ContainerBlockDirective(Array(name): _*) {
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
     val classes = node.attributes.classesString
-    val title = node.attributes.value("title", defaultTitle)
+    val title   = node.attributes.value("title", defaultTitle)
 
     printer.print(s"""<div class="callout $name $classes">""")
     printer.print(s"""<div class="callout-title">$title</div>""")
@@ -519,11 +574,12 @@ case class CalloutDirective(name: String, defaultTitle: String) extends Containe
 }
 
 /**
- * Wrap directive.
- *
- * Wraps inner content in a `div` or `p`, optionally with custom `id` and/or `class` attributes.
- */
-case class WrapDirective(typ: String) extends ContainerBlockDirective(Array(typ, typ.toUpperCase): _*) {
+  * Wrap directive.
+  *
+  * Wraps inner content in a `div` or `p`, optionally with custom `id` and/or `class` attributes.
+  */
+case class WrapDirective(typ: String)
+    extends ContainerBlockDirective(Array(typ, typ.toUpperCase): _*) {
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
     val id =
       node.attributes.identifier match {
@@ -542,11 +598,12 @@ case class WrapDirective(typ: String) extends ContainerBlockDirective(Array(typ,
 }
 
 /**
- * Inline wrap directive
- *
- * Wraps inner contents in a `span`, optionally with custom `id` and/or `class` attributes.
- */
-case class InlineWrapDirective(typ: String) extends InlineDirective(Array(typ, typ.toUpperCase): _*) {
+  * Inline wrap directive
+  *
+  * Wraps inner contents in a `span`, optionally with custom `id` and/or `class` attributes.
+  */
+case class InlineWrapDirective(typ: String)
+    extends InlineDirective(Array(typ, typ.toUpperCase): _*) {
 
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
     val id =
@@ -574,10 +631,11 @@ case class InlineGroupDirective(groups: Seq[String]) extends InlineDirective(gro
 }
 
 /**
- * Dependency directive.
- */
-case class DependencyDirective(variables: Map[String, String]) extends LeafBlockDirective("dependency") {
-  val ScalaVersion = variables.get("scala.version")
+  * Dependency directive.
+  */
+case class DependencyDirective(variables: Map[String, String])
+    extends LeafBlockDirective("dependency") {
+  val ScalaVersion       = variables.get("scala.version")
   val ScalaBinaryVersion = variables.get("scala.binary.version")
 
   def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
@@ -590,11 +648,16 @@ case class DependencyDirective(variables: Map[String, String]) extends LeafBlock
   def renderDependency(tools: String, node: DirectiveNode, printer: Printer): Unit = {
     val classes = Seq("dependency", node.attributes.classesString).filter(_.nonEmpty)
 
-    val dependencyPostfixes = node.attributes.keys().asScala.toSeq
-      .filter(_.startsWith("group")).sorted.map(_.replace("group", ""))
+    val dependencyPostfixes = node.attributes
+      .keys()
+      .asScala
+      .toSeq
+      .filter(_.startsWith("group"))
+      .sorted
+      .map(_.replace("group", ""))
 
     val startDelimiter = node.attributes.value("start-delimiter", "$")
-    val stopDelimiter = node.attributes.value("stop-delimiter", "$")
+    val stopDelimiter  = node.attributes.value("stop-delimiter", "$")
     def coordinate(name: String): Option[String] =
       Option(node.attributes.value(name)).map { value =>
         variables.foldLeft(value) {
@@ -606,13 +669,19 @@ case class DependencyDirective(variables: Map[String, String]) extends LeafBlock
     def requiredCoordinate(name: String): String =
       coordinate(name).getOrElse(throw DependencyDirective.UndefinedVariable(name))
 
-    def sbt(group: String, artifact: String, version: String, scope: Option[String], classifier: Option[String]): String = {
+    def sbt(
+        group: String,
+        artifact: String,
+        version: String,
+        scope: Option[String],
+        classifier: Option[String]
+    ): String = {
       val scopeString = scope.map {
         case s @ ("runtime" | "compile" | "test") => " % " + s.capitalize
         case s                                    => s""" % "$s""""
       }
       val classifierString = classifier.map(" classifier " + '"' + _ + '"')
-      val extra = (scopeString ++ classifierString).mkString
+      val extra            = (scopeString ++ classifierString).mkString
       (ScalaVersion, ScalaBinaryVersion) match {
         case (Some(scalaVersion), _) if artifact.endsWith("_" + scalaVersion) =>
           val strippedArtifact = artifact.substring(0, artifact.length - 1 - scalaVersion.length)
@@ -627,19 +696,35 @@ case class DependencyDirective(variables: Map[String, String]) extends LeafBlock
       }
     }
 
-    def gradle(group: String, artifact: String, version: String, scope: Option[String], classifier: Option[String]): String = {
-      val conf = scope.getOrElse("compile")
+    def gradle(
+        group: String,
+        artifact: String,
+        version: String,
+        scope: Option[String],
+        classifier: Option[String]
+    ): String = {
+      val conf  = scope.getOrElse("compile")
       val extra = classifier.map(c => s", classifier: '$c'").getOrElse("")
       s"""$conf group: '$group', name: '$artifact', version: '$version'$extra""".stripMargin
     }
 
-    def mvn(group: String, artifact: String, version: String, scope: Option[String], classifier: Option[String]): String = {
+    def mvn(
+        group: String,
+        artifact: String,
+        version: String,
+        scope: Option[String],
+        classifier: Option[String]
+    ): String = {
       val elements =
-        Seq("groupId" -> group, "artifactId" -> artifact, "version" -> version) ++
+        Seq("groupId"                 -> group, "artifactId"     -> artifact, "version" -> version) ++
           classifier.map("classifier" -> _) ++ scope.map("scope" -> _)
-      elements.map {
-        case (element, value) => s"  <$element>$value</$element>"
-      }.mkString("<dependency>\n", "\n", "\n</dependency>").replace("<", "&lt;").replace(">", "&gt;")
+      elements
+        .map {
+          case (element, value) => s"  <$element>$value</$element>"
+        }
+        .mkString("<dependency>\n", "\n", "\n</dependency>")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
     }
 
     printer.print(s"""<dl class="${classes.mkString(" ")}">""")
@@ -659,7 +744,8 @@ case class DependencyDirective(variables: Map[String, String]) extends LeafBlock
           val libraryDependencies = artifacts match {
             case Seq(artifact) => s"libraryDependencies += $artifact"
             case artifacts =>
-              Seq("libraryDependencies ++= Seq(", artifacts.map(a => s"  $a").mkString(",\n"), ")").mkString("\n")
+              Seq("libraryDependencies ++= Seq(", artifacts.map(a => s"  $a").mkString(",\n"), ")")
+                .mkString("\n")
           }
 
           ("scala", libraryDependencies)
@@ -707,14 +793,22 @@ object DependencyDirective {
   case class UndefinedVariable(name: String) extends RuntimeException(s"'$name' is not defined")
 }
 
-case class IncludeDirective(page: Page, variables: Map[String, String]) extends LeafBlockDirective("include") with SourceDirective {
+case class IncludeDirective(page: Page, variables: Map[String, String])
+    extends LeafBlockDirective("include")
+    with SourceDirective {
 
   override def render(node: DirectiveNode, visitor: Visitor, printer: Printer): Unit = {
-    throw new IllegalStateException("Include directive should have been handled in markdown preprocessing before render, but wasn't.")
+    throw new IllegalStateException(
+      "Include directive should have been handled in markdown preprocessing before render, but wasn't."
+    )
   }
 }
 
 object IncludeDirective {
-  case class IncludeSourceException(source: DirectiveNode.Source) extends RuntimeException(s"Only explicit links are supported by the include directive, reference links are not: " + source)
-  case class IncludeFormatException(format: String) extends RuntimeException(s"Don't know how to include '*.$format' content.")
+  case class IncludeSourceException(source: DirectiveNode.Source)
+      extends RuntimeException(
+        s"Only explicit links are supported by the include directive, reference links are not: " + source
+      )
+  case class IncludeFormatException(format: String)
+      extends RuntimeException(s"Don't know how to include '*.$format' content.")
 }

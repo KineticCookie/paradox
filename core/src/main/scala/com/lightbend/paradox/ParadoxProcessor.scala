@@ -18,8 +18,8 @@ package com.lightbend.paradox
 
 import com.lightbend.paradox.template.PageTemplate
 import com.lightbend.paradox.markdown._
-import com.lightbend.paradox.tree.Tree.{ Forest, Location }
-import java.io.{ File, FileOutputStream, OutputStreamWriter }
+import com.lightbend.paradox.tree.Tree.{Forest, Location}
+import java.io.{File, FileOutputStream, OutputStreamWriter}
 import java.util
 
 import org.pegdown.ast._
@@ -29,114 +29,172 @@ import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 
 /**
- * Markdown site processor.
- */
+  * Markdown site processor.
+  */
 class ParadoxProcessor(reader: Reader = new Reader, writer: Writer = new Writer) {
 
   /**
-   * Process all mappings to build the site.
-   */
+    * Process all mappings to build the site.
+    */
   def process(
-    mappings:           Seq[(File, String)],
-    leadingBreadcrumbs: List[(String, String)],
-    outputDirectory:    File,
-    sourceSuffix:       String,
-    targetSuffix:       String,
-    groups:             Map[String, Seq[String]],
-    properties:         Map[String, String],
-    navDepth:           Int,
-    navExpandDepth:     Option[Int],
-    navIncludeHeaders:  Boolean,
-    pageTemplate:       PageTemplate,
-    errorListener:      STErrorListener): Seq[(File, String)] = {
-    require(!groups.values.flatten.map(_.toLowerCase).groupBy(identity).values.exists(_.size > 1), "Group names may not overlap")
+      mappings: Seq[(File, String)],
+      leadingBreadcrumbs: List[(String, String)],
+      outputDirectory: File,
+      sourceSuffix: String,
+      targetSuffix: String,
+      groups: Map[String, Seq[String]],
+      properties: Map[String, String],
+      navDepth: Int,
+      navExpandDepth: Option[Int],
+      navIncludeHeaders: Boolean,
+      pageTemplate: PageTemplate,
+      errorListener: STErrorListener
+  ): Seq[(File, String)] = {
+    require(
+      !groups.values.flatten.map(_.toLowerCase).groupBy(identity).values.exists(_.size > 1),
+      "Group names may not overlap"
+    )
 
-    val pages = parsePages(mappings, Path.replaceSuffix(sourceSuffix, targetSuffix), properties)
-    val paths = Page.allPaths(pages).toSet
+    val pages              = parsePages(mappings, Path.replaceSuffix(sourceSuffix, targetSuffix), properties)
+    val paths              = Page.allPaths(pages).toSet
     val globalPageMappings = rootPageMappings(pages)
 
-    val navToc = new TableOfContents(pages = true, headers = navIncludeHeaders, ordered = false, maxDepth = navDepth, maxExpandDepth = navExpandDepth)
-    val pageToc = new TableOfContents(pages = false, headers = true, ordered = false, maxDepth = navDepth)
+    val navToc = new TableOfContents(
+      pages = true,
+      headers = navIncludeHeaders,
+      ordered = false,
+      maxDepth = navDepth,
+      maxExpandDepth = navExpandDepth
+    )
+    val pageToc =
+      new TableOfContents(pages = false, headers = true, ordered = false, maxDepth = navDepth)
 
     @tailrec
-    def render(location: Option[Location[Page]], rendered: Seq[(File, String)] = Seq.empty): Seq[(File, String)] = location match {
+    def render(
+        location: Option[Location[Page]],
+        rendered: Seq[(File, String)] = Seq.empty
+    ): Seq[(File, String)] = location match {
       case Some(loc) =>
-        val page = loc.tree.label
+        val page           = loc.tree.label
         val pageProperties = properties ++ page.properties.get
-        val currentMapping = Path.generateTargetFile(Path.relativeLocalPath(page.rootSrcPage, page.file.getPath), globalPageMappings)
-        val writerContext = Writer.Context(loc, paths, reader, writer, currentMapping, sourceSuffix, targetSuffix, groups, pageProperties)
-        val pageContext = PageContents(leadingBreadcrumbs, groups, loc, writer, writerContext, navToc, pageToc)
+        val currentMapping = Path.generateTargetFile(
+          Path.relativeLocalPath(page.rootSrcPage, page.file.getPath),
+          globalPageMappings
+        )
+        val writerContext = Writer.Context(
+          loc,
+          paths,
+          reader,
+          writer,
+          currentMapping,
+          sourceSuffix,
+          targetSuffix,
+          groups,
+          pageProperties
+        )
+        val pageContext =
+          PageContents(leadingBreadcrumbs, groups, loc, writer, writerContext, navToc, pageToc)
         val outputFile = new File(outputDirectory, page.path)
         outputFile.getParentFile.mkdirs
-        pageTemplate.write(page.properties(Page.Properties.DefaultLayoutMdIndicator, pageTemplate.defaultName), pageContext, outputFile, errorListener)
+        pageTemplate.write(
+          page.properties(Page.Properties.DefaultLayoutMdIndicator, pageTemplate.defaultName),
+          pageContext,
+          outputFile,
+          errorListener
+        )
         render(loc.next, rendered :+ (outputFile, page.path))
       case None => rendered
     }
     outputDirectory.mkdirs()
-    createMetadata(outputDirectory, properties) :: (pages flatMap { root => render(Some(root.location)) })
+    createMetadata(outputDirectory, properties) :: (pages flatMap { root =>
+      render(Some(root.location))
+    })
   }
 
-  private def createMetadata(outputDirectory: File, properties: Map[String, String]): (File, String) = {
+  private def createMetadata(
+      outputDirectory: File,
+      properties: Map[String, String]
+  ): (File, String) = {
     val metadataFilename = "paradox.json"
-    val target = new File(outputDirectory, metadataFilename)
-    val osWriter = new OutputStreamWriter(new FileOutputStream(target))
-    osWriter.write(
-      s"""{
-         |  "name" : "${properties("project.name")}",
-         |  "version" : "${properties("project.version")}"
-         |}""".stripMargin)
+    val target           = new File(outputDirectory, metadataFilename)
+    val osWriter         = new OutputStreamWriter(new FileOutputStream(target))
+    osWriter.write(s"""{
+                      |  "name" : "${properties("project.name")}",
+                      |  "version" : "${properties("project.version")}"
+                      |}""".stripMargin)
     osWriter.close()
     (target, metadataFilename)
   }
 
   /**
-   * Default template contents for a markdown page at a particular location.
-   */
-  case class PageContents(leadingBreadcrumbs: List[(String, String)], groups: Map[String, Seq[String]], loc: Location[Page], writer: Writer, context: Writer.Context, navToc: TableOfContents, pageToc: TableOfContents) extends PageTemplate.Contents {
-    import scala.collection.JavaConverters._
+    * Default template contents for a markdown page at a particular location.
+    */
+  case class PageContents(
+      leadingBreadcrumbs: List[(String, String)],
+      groups: Map[String, Seq[String]],
+      loc: Location[Page],
+      writer: Writer,
+      context: Writer.Context,
+      navToc: TableOfContents,
+      pageToc: TableOfContents
+  ) extends PageTemplate.Contents {
 
     private val page = loc.tree.label
 
-    val getTitle = page.title
-    val getContent =
+    val getTitle: String = page.title
+    val getContent: String =
       try writer.writeContent(page.markdown, context)
       catch {
-        case e: Throwable => throw new RuntimeException(s"Error writing content for page ${page.path}: ${e.getMessage}", e)
+        case e: Throwable =>
+          throw new RuntimeException(
+            s"Error writing content for page ${page.path}: ${e.getMessage}",
+            e
+          )
       }
 
-    lazy val getBase = page.base
-    lazy val getHome = link(Some(loc.root))
-    lazy val getPrev = link(loc.prev)
-    lazy val getSelf = link(Some(loc))
-    lazy val getNext = link(loc.next)
-    lazy val getBreadcrumbs = writer.writeBreadcrumbs(Breadcrumbs.markdown(leadingBreadcrumbs, loc.path), context)
-    lazy val getNavigation = writer.writeNavigation(navToc.root(loc), context)
-    lazy val getGroups = Groups.html(groups)
-    lazy val hasSubheaders = page.headers.nonEmpty
-    lazy val getToc = writer.writeToc(pageToc.headers(loc), context)
-    lazy val getSource_url = githubLink(Some(loc)).getHtml
+    lazy val getBase: String            = page.base
+    lazy val getHome: PageTemplate.Link = link(Some(loc.root))
+    lazy val getPrev: PageTemplate.Link = link(loc.prev)
+    lazy val getSelf: PageTemplate.Link = link(Some(loc))
+    lazy val getNext: PageTemplate.Link = link(loc.next)
+    lazy val getBreadcrumbs: String =
+      writer.writeBreadcrumbs(Breadcrumbs.markdown(leadingBreadcrumbs, loc.path), context)
+    lazy val getNavigation: String  = writer.writeNavigation(navToc.root(loc), context)
+    lazy val getGroups: String      = Groups.html(groups)
+    lazy val hasSubheaders: Boolean = page.headers.nonEmpty
+    lazy val getToc: String         = writer.writeToc(pageToc.headers(loc), context)
+    lazy val getSource_url: String  = githubLink(Some(loc)).getHtml
 
-    lazy val getProperties = context.properties.asJava
+    lazy val getProperties: Map[String, String] = context.properties
 
-    private def link(location: Option[Location[Page]]): PageTemplate.Link = PageLink(location, page, writer, context)
-    private def githubLink(location: Option[Location[Page]]): PageTemplate.Link = GithubLink(location, page, writer, context)
+    private def link(location: Option[Location[Page]]): PageTemplate.Link =
+      PageLink(location, page, writer, context)
+    private def githubLink(location: Option[Location[Page]]): PageTemplate.Link =
+      GithubLink(location, page, writer, context)
   }
 
   /**
-   * Default template links, rendered to just a relative uri and HTML for the link.
-   */
-  case class PageLink(location: Option[Location[Page]], current: Page, writer: Writer, context: Writer.Context) extends PageTemplate.Link {
-    lazy val getHref: String = location.map(href).orNull
-    lazy val getHtml: String = location.map(link).orNull
+    * Default template links, rendered to just a relative uri and HTML for the link.
+    */
+  case class PageLink(
+      location: Option[Location[Page]],
+      current: Page,
+      writer: Writer,
+      context: Writer.Context
+  ) extends PageTemplate.Link {
+    lazy val getHref: String  = location.map(href).orNull
+    lazy val getHtml: String  = location.map(link).orNull
     lazy val getTitle: String = location.map(title).orNull
-    lazy val getAbsolute: PageLink = PageLink(location, location.map(_.root.tree.label).getOrElse(current), writer, context)
+    lazy val getAbsolute: PageLink =
+      PageLink(location, location.map(_.root.tree.label).getOrElse(current), writer, context)
     lazy val isActive: Boolean = location.exists(active)
 
     private def link(location: Location[Page]): String = {
-      val node = if (active(location))
-        new ClassyLinkNode(href(location), "active", location.tree.label.label)
-      else
-        new ExpLinkNode("", href(location), location.tree.label.label)
+      val node =
+        if (active(location))
+          new ClassyLinkNode(href(location), "active", location.tree.label.label)
+        else
+          new ExpLinkNode("", href(location), location.tree.label.label)
       writer.writeFragment(node, context)
     }
 
@@ -150,20 +208,26 @@ class ParadoxProcessor(reader: Reader = new Reader, writer: Writer = new Writer)
   }
 
   /**
-   * Github links, rendered to just a HTML for the link.
-   */
-  case class GithubLink(location: Option[Location[Page]], page: Page, writer: Writer, context: Writer.Context) extends PageTemplate.Link with GitHubResolver {
-    lazy val getHref: String = location.map(href).orNull
-    lazy val getHtml: String = getHref // TODO: temporary, should provide a link directly
-    lazy val getTitle: String = location.map(title).orNull
+    * Github links, rendered to just a HTML for the link.
+    */
+  case class GithubLink(
+      location: Option[Location[Page]],
+      page: Page,
+      writer: Writer,
+      context: Writer.Context
+  ) extends PageTemplate.Link
+      with GitHubResolver {
+    lazy val getHref: String   = location.map(href).orNull
+    lazy val getHtml: String   = getHref // TODO: temporary, should provide a link directly
+    lazy val getTitle: String  = location.map(title).orNull
     lazy val isActive: Boolean = false
 
-    override def variables = context.properties
+    override def variables: Map[String, String] = context.properties
 
     private def href(location: Location[Page]): String = {
       try {
         val sourceFilePath = location.tree.label.file.toString
-        val rootPath = new File(".").getCanonicalFile.toString
+        val rootPath       = new File(".").getCanonicalFile.toString
         (treeUrl / Path.relativeLocalPath(rootPath, sourceFilePath)).toString
       } catch {
         case e: Url.Error => null
@@ -174,53 +238,67 @@ class ParadoxProcessor(reader: Reader = new Reader, writer: Writer = new Writer)
   }
 
   /**
-   * Parse markdown files (with paths) into a forest of linked pages.
-   */
-  def parsePages(mappings: Seq[(File, String)], convertPath: String => String, properties: Map[String, String]): Forest[Page] = {
+    * Parse markdown files (with paths) into a forest of linked pages.
+    */
+  def parsePages(
+      mappings: Seq[(File, String)],
+      convertPath: String => String,
+      properties: Map[String, String]
+  ): Forest[Page] = {
     Page.forest(parseMarkdown(mappings, properties), convertPath, properties)
   }
 
   /**
-   * Parse markdown files into pegdown AST.
-   */
-  def parseMarkdown(mappings: Seq[(File, String)], properties: Map[String, String]): Seq[(File, String, RootNode, Map[String, String])] = {
+    * Parse markdown files into pegdown AST.
+    */
+  def parseMarkdown(
+      mappings: Seq[(File, String)],
+      properties: Map[String, String]
+  ): Seq[(File, String, RootNode, Map[String, String])] = {
     mappings map {
       case (file, path) =>
         val frontin = Frontin(file)
-        val root = parseAndProcessMarkdown(file, frontin.body, properties ++ frontin.header)
+        val root    = parseAndProcessMarkdown(file, frontin.body, properties ++ frontin.header)
         (file, normalizePath(path), root, frontin.header)
     }
   }
 
-  def parseAndProcessMarkdown(file: File, markdown: String, properties: Map[String, String]): RootNode = {
+  def parseAndProcessMarkdown(
+      file: File,
+      markdown: String,
+      properties: Map[String, String]
+  ): RootNode = {
     val root = reader.read(markdown)
     processIncludes(file, root, properties)
   }
 
-  private def processIncludes(file: File, root: RootNode, properties: Map[String, String]): RootNode = {
+  private def processIncludes(
+      file: File,
+      root: RootNode,
+      properties: Map[String, String]
+  ): RootNode = {
     val newRoot = new RootNode
     // This is a mutable list, and is expected to be mutated by anything that wishes to add children
     val newChildren = newRoot.getChildren
 
     root.getChildren.asScala.foreach {
       case include: DirectiveNode if include.name == "include" =>
-        val labels = include.attributes.values("identifier").asScala
+        val labels = include.attributes.values("identifier").asScala.toList
         val source = include.source match {
           case direct: DirectiveNode.Source.Direct => direct.value
           case other                               => throw IncludeDirective.IncludeSourceException(other)
         }
         val includeFile = SourceDirective.resolveFile("include", source, file, properties)
-        val frontin = Frontin(includeFile)
-        val filterLabels = include.attributes.booleanValue(
-          "filterLabels",
-          properties.get("include.filterLabels").exists(_ == "true"))
+        val frontin     = Frontin(includeFile)
+        val filterLabels = include.attributes
+          .booleanValue("filterLabels", properties.get("include.filterLabels").contains("true"))
         val (text, snippetLang) = Snippet(includeFile, labels, filterLabels)
         // I guess we could support multiple markup languages in future...
         if (snippetLang != "md" && snippetLang != "markdown") {
           throw IncludeDirective.IncludeFormatException(snippetLang)
         }
         val includedRoot = parseAndProcessMarkdown(includeFile, text, properties ++ frontin.header)
-        val includeNode = IncludeNode(includedRoot, includeFile, source)
+        val includeNode  = IncludeNode(includedRoot, includeFile, source)
         includeNode.setStartIndex(include.getStartIndex)
         includeNode.setEndIndex(include.getEndIndex)
         newChildren.add(includeNode)
@@ -235,24 +313,27 @@ class ParadoxProcessor(reader: Reader = new Reader, writer: Writer = new Writer)
   }
 
   /**
-   * Normalize path to '/' separator.
-   */
+    * Normalize path to '/' separator.
+    */
   def normalizePath(path: String, separator: Char = java.io.File.separatorChar): String = {
     if (separator == '/') path else path.replace(separator, '/')
   }
 
   /**
-   * Create Mappings from page path to target file name
-   */
+    * Create Mappings from page path to target file name
+    */
   def rootPageMappings(pages: Forest[Page]): Map[String, String] = {
     @tailrec
-    def mapping(location: Option[Location[Page]], fileMappings: List[(String, String)] = Nil): List[(String, String)] = location match {
+    def mapping(
+        location: Option[Location[Page]],
+        fileMappings: List[(String, String)] = Nil
+    ): List[(String, String)] = location match {
       case Some(loc) =>
-        val page = loc.tree.label
-        val fullSrcPath = page.file.getPath
+        val page          = loc.tree.label
+        val fullSrcPath   = page.file.getPath
         val curTargetPath = page.path
-        val curSrcPath = Path.relativeLocalPath(page.rootSrcPage, fullSrcPath)
-        val curMappings = (curSrcPath, curTargetPath)
+        val curSrcPath    = Path.relativeLocalPath(page.rootSrcPage, fullSrcPath)
+        val curMappings   = (curSrcPath, curTargetPath)
         mapping(loc.next, curMappings :: fileMappings)
       case None => fileMappings
     }

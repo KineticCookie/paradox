@@ -16,43 +16,58 @@
 
 package com.lightbend.paradox.template
 
-import java.io.{ File, OutputStreamWriter, FileOutputStream }
-import java.util.{ Map => JMap }
+import java.io.{File, FileOutputStream, OutputStreamWriter}
+
 import org.stringtemplate.v4.misc.STMessage
-import org.stringtemplate.v4.{ STErrorListener, STRawGroupDir, ST, NoIndentWriter }
-import collection.concurrent.TrieMap
+import org.stringtemplate.v4.{NoIndentWriter, STErrorListener, STRawGroupDir}
 
 /**
- * Page template writer.
- */
-class PageTemplate(directory: File, val defaultName: String = "page", startDelimiter: Char = '$', stopDelimiter: Char = '$') {
-  private val templates = new STRawGroupDir(directory.getAbsolutePath, startDelimiter, stopDelimiter)
+  * Page template writer.
+  */
+class PageTemplate(
+    directory: File,
+    val defaultName: String = "page",
+    startDelimiter: Char = '$',
+    stopDelimiter: Char = '$'
+) {
+  private val templates =
+    new STRawGroupDir(directory.getAbsolutePath, startDelimiter, stopDelimiter)
 
   /**
-   * Write a templated page to the target file.
-   */
-  def write(name: String, contents: PageTemplate.Contents, target: File, errorListener: STErrorListener): File = {
-    import scala.collection.JavaConverters._
+    * Write a templated page to the target file.
+    */
+  def write(
+      name: String,
+      contents: PageTemplate.Contents,
+      target: File,
+      errorListener: STErrorListener
+  ): File = {
 
     val template = Option(templates.getInstanceOf(name)) match {
       case Some(t) => // TODO, only load page properties, not global ones
-        for (content <- contents.getProperties.asScala.filterNot(_._1.contains("."))) { t.add(content._1, content._2) }
+        for (content <- contents.getProperties.filterNot(_._1.contains("."))) {
+          t.add(content._1, content._2)
+        }
         t.add("page", contents)
-      case None => sys.error(s"StringTemplate '$name' was not found for '$target'. Create a template or set a theme that contains one.")
+      case None =>
+        sys.error(
+          s"StringTemplate '$name' was not found for '$target'. Create a template or set a theme that contains one."
+        )
     }
-    val osWriter = new OutputStreamWriter(new FileOutputStream(target))
+    val osWriter       = new OutputStreamWriter(new FileOutputStream(target))
     val noIndentWriter = new NoIndentWriter(osWriter)
     template.write(noIndentWriter) // does not take into account the errorListener any more...
-    osWriter.close
+    osWriter.close()
     target
   }
 
 }
 
 object PageTemplate {
+
   /**
-   * All page information to give to the template.
-   */
+    * All page information to give to the template.
+    */
   trait Contents {
     def getTitle: String
     def getContent: String
@@ -65,12 +80,12 @@ object PageTemplate {
     def hasSubheaders: Boolean
     def getToc: String
     def getSource_url: String
-    def getProperties: JMap[String, String]
+    def getProperties: Map[String, String]
   }
 
   /**
-   * Page link. Can be rendered as just the href or full HTML.
-   */
+    * Page link. Can be rendered as just the href or full HTML.
+    */
   trait Link {
     def getHref: String
     def getHtml: String
@@ -79,12 +94,12 @@ object PageTemplate {
   }
 
   /**
-   * Error listener wrapper.
-   */
+    * Error listener wrapper.
+    */
   class ErrorLogger(error: String => Unit) extends STErrorListener {
     override def compileTimeError(stm: STMessage): Unit = error(stm.toString)
-    override def runTimeError(stm: STMessage): Unit = error(stm.toString)
-    override def IOError(stm: STMessage): Unit = error(stm.toString)
-    override def internalError(stm: STMessage): Unit = error(stm.toString)
+    override def runTimeError(stm: STMessage): Unit     = error(stm.toString)
+    override def IOError(stm: STMessage): Unit          = error(stm.toString)
+    override def internalError(stm: STMessage): Unit    = error(stm.toString)
   }
 }
